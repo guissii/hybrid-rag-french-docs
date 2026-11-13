@@ -1,0 +1,14 @@
+[
+  {"filename": "ccag_travaux_2021.pdf",
+   "url": "https://www.var.gouv.fr/index.php/contenu/telechargement/14300/115961/file/ccag_travaux_30.03.2021_joe_20210401_0078_0019.pdf",
+   "description": "Arrete du 30 mars 2021 approuvant le CCAG-Travaux (JORF du 1er avril 2021), copie hebergee par une prefecture. URL non verifiee depuis l'environnement de developpement.",
+   "type": "pdf"},
+  {"filename": "dc1_lettre_candidature.pdf",
+   "url": "https://hautes-alpes.gouv.fr/contenu/telechargement/18048/157058/file/1-lettre_de_candidature-dc1.pdf",
+   "description": "Formulaire DC1 (lettre de candidature), copie hebergee par une prefecture. URL non verifiee.",
+   "type": "pdf"},
+  {"filename": "notice_dc2.pdf",
+   "url": "https://www.vaucluse.fr/fileadmin/Documents_PDF/Votre_Conseil_departemental/Les_marches_publics/2024/NOTICE_DC2_-_21.11.2023.pdf",
+   "description": "Notice du formulaire DC2, publiee par un conseil departemental. URL non verifiee.",
+   "type": "pdf"}
+]
