@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -106,7 +107,9 @@ def load_corpus(processed_dir: str | Path) -> dict[str, list[Element]]:
 def extract_dir(raw_dir: str | Path, out_dir: str | Path, force: bool = False) -> int:
     raw_dir, out_dir = Path(raw_dir), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    files = sorted(p for p in raw_dir.iterdir() if p.suffix.lower() in SUPPORTED)
+    # Petits fichiers d'abord : on voit vite un resultat, le gros PDF passe en dernier.
+    files = sorted((p for p in raw_dir.iterdir() if p.suffix.lower() in SUPPORTED),
+                   key=lambda p: (p.stat().st_size, p.name))
     if not files:
         print(f"Aucun PDF/DOCX dans {raw_dir} (lancez `make download` ou deposez des fichiers).",
               file=sys.stderr)
@@ -118,14 +121,15 @@ def extract_dir(raw_dir: str | Path, out_dir: str | Path, force: bool = False) -
             print(f"= {f.name} (cache)")
             done += 1
             continue
-        print(f"> {f.name}")
+        print(f"> {f.name} ({f.stat().st_size / 1e6:.1f} Mo) - peut prendre plusieurs minutes sur CPU...", flush=True)
+        t0 = time.perf_counter()
         try:
             els = extract_document(f)
         except Exception as e:  # un document defectueux ne doit pas tout bloquer
             print(f"  ECHEC: {type(e).__name__}: {e}", file=sys.stderr)
             continue
         save_elements(els, out)
-        print(f"  {len(els)} elements")
+        print(f"  {len(els)} elements en {time.perf_counter() - t0:.0f} s", flush=True)
         done += 1
     return done
 
