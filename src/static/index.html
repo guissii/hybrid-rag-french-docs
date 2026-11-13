@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG hybride</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2330; --muted:#5d6878; --line:#dde2ea; --accent:#2457d6; --accent-text:#fff; --mark:#fff3b0; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --card:#1b2029; --text:#e6e9ef; --muted:#9aa5b5; --line:#2c3440; --accent:#6c9bff; --accent-text:#0d1320; --mark:#5a4d10; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  form { display:flex; flex-wrap:wrap; gap:8px; }
+  input[type=text] { flex:1 1 320px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--text); font:inherit; }
+  select, input[type=number] { padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--text); font:inherit; }
+  input[type=number] { width: 72px; }
+  button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:var(--accent-text); font:inherit; font-weight:600; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  button:disabled { opacity:.6; cursor:wait; }
+  .opts { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:12px 0 20px; color:var(--muted); font-size:.9rem; }
+  #status { color:var(--muted); margin:8px 0; }
+  #status.err { color:#c0392b; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:12px 0; }
+  .meta { display:flex; flex-wrap:wrap; gap:6px 14px; color:var(--muted); font-size:.85rem; margin-bottom:8px; }
+  .meta b { color:var(--text); }
+  .text { white-space:pre-wrap; overflow-wrap:anywhere; }
+  mark { background:var(--mark); color:inherit; border-radius:2px; }
+  .answer { border-left:4px solid var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Recherche documentaire hybride</h1>
+  <p class="sub">Dense + BM25 fusionnés par RRF, sur vos PDF et DOCX indexés.</p>
+
+  <form id="form">
+    <input id="q" type="text" placeholder="Posez votre question…" autocomplete="off" required autofocus>
+    <button id="go" type="submit">Rechercher</button>
+  </form>
+  <div class="opts">
+    <label>Mode
+      <select id="mode">
+        <option value="hybrid">hybride (RRF)</option>
+        <option value="dense">dense seul</option>
+        <option value="bm25">BM25 seul</option>
+        <option value="hybrid+rerank">hybride + reranking</option>
+      </select>
+    </label>
+    <label>Résultats <input id="k" type="number" min="1" max="50" value="5"></label>
+    <button id="ask" type="button" class="secondary" title="Nécessite Ollama en local">Générer une réponse (Ollama)</button>
+  </div>
+
+  <div id="status" role="status"></div>
+  <div id="answer"></div>
+  <div id="results"></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+// Tout texte est inséré via textContent / createTextNode, jamais via innerHTML.
+
+function setStatus(msg, isErr = false) { $("status").textContent = msg; $("status").className = isErr ? "err" : ""; }
+
+function terms(q) {
+  return q.toLowerCase().split(/\W+/).filter((t) => t.length > 3);
+}
+
+// Met en évidence les mots de la requête sans innerHTML (pas d'injection possible).
+function highlight(container, text, words) {
+  if (!words.length) { container.textContent = text; return; }
+  const re = new RegExp("(" + words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi");
+  text.split(re).forEach((part, i) => {
+    if (i % 2 === 1) { const m = document.createElement("mark"); m.textContent = part; container.appendChild(m); }
+    else container.appendChild(document.createTextNode(part));
+  });
+}
+
+function renderPassages(passages, q) {
+  const box = $("results"); box.replaceChildren();
+  if (!passages.length) { setStatus("Aucun passage trouvé."); return; }
+  const words = terms(q);
+  passages.forEach((p, i) => {
+    const card = document.createElement("div"); card.className = "card";
+    const meta = document.createElement("div"); meta.className = "meta";
+    const parts = [["#" + (i + 1), ""], [p.doc, ""], [p.pages && p.pages.length ? "page " + p.pages.join(", ") : "page n/a", ""],
+                   [p.section || "", ""], ["score " + Number(p.score).toFixed(4), ""]];
+    parts.forEach(([t], j) => { if (!t) return; const s = document.createElement(j === 1 ? "b" : "span"); s.textContent = t; meta.appendChild(s); });
+    const body = document.createElement("div"); body.className = "text";
+    highlight(body, p.text, words);
+    card.append(meta, body); box.appendChild(card);
+  });
+}
+
+async function call(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    let detail = r.status + " " + r.statusText;
+    try { const j = await r.json(); if (j.detail) detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (_) {}
+    throw new Error(detail);
+  }
+  return r.json();
+}
+
+async function run(withAnswer) {
+  const q = $("q").value.trim(); if (!q) return;
+  const mode = $("mode").value, k = Math.max(1, Math.min(50, +$("k").value || 5));
+  $("go").disabled = $("ask").disabled = true;
+  $("answer").replaceChildren(); $("results").replaceChildren();
+  setStatus(withAnswer ? "Recherche et génération en cours…" : "Recherche en cours…");
+  const t0 = performance.now();
+  try {
+    let data;
+    if (withAnswer) {
+      data = await call("/answer", { method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ question: q, k, mode }) });
+      const a = document.createElement("div"); a.className = "card answer";
+      const t = document.createElement("div"); t.className = "text"; t.textContent = data.answer || "(réponse vide)";
+      a.appendChild(t); $("answer").appendChild(a);
+      renderPassages(data.sources, q);
+    } else {
+      data = await call("/search?" + new URLSearchParams({ q, k, mode }));
+      renderPassages(data.results, q);
+    }
+    const n = (data.results || data.sources || []).length;
+    setStatus(n + " passage(s) · " + Math.round(performance.now() - t0) + " ms (aller-retour navigateur inclus)");
+  } catch (e) {
+    setStatus("Erreur : " + e.message, true);
+  } finally {
+    $("go").disabled = $("ask").disabled = false;
+  }
+}
+
+$("form").addEventListener("submit", (e) => { e.preventDefault(); run(false); });
+$("ask").addEventListener("click", () => run(true));
+</script>
+</body>
+</html>

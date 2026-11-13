@@ -41,7 +41,7 @@ flowchart LR
 | `src/index.py` | Embeddings (sentence-transformers), index FAISS (cosinus), index BM25 |
 | `src/retrieve.py` | `dense`, `bm25`, `hybrid` (RRF), `hybrid+rerank` |
 | `src/evaluate.py` | hit@k, MRR, nDCG@10, latence ; balayage ; écrit `results/` |
-| `src/app.py` | API FastAPI : `/search`, `/answer` (Ollama) |
+| `src/app.py` | API FastAPI : `/search`, `/answer` (Ollama) ; sert l'interface `src/static/index.html` sur `/` |
 
 ## Reproduire
 
@@ -72,7 +72,7 @@ Tant que le jeu de questions est vide ou non étiqueté, `make eval` s'arrête a
 erreur explicite et **ne produit aucun chiffre**. Ajoutez `--rerank` à la commande pour
 inclure le reranking cross-encoder.
 
-API (optionnelle) :
+Interface web et API (optionnelles) : `make serve` puis ouvrir <http://127.0.0.1:8000/> (page de recherche : mode, nombre de résultats, passages avec document/page/section, bouton Ollama) ; la documentation de l'API est sur `/docs`.
 
 ```bash
 make index && make serve
